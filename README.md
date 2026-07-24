@@ -11,5 +11,5 @@ programming.
 
 ## Recent Notes
 
-- [KV Cache Compression](./infra/inference/kv-cache-compression/) - Paper survey,
+- [KV Cache Compression](./infra/inference/kv-cache-compression.md) - Paper survey,
   experiment reproduction, and observations on KV cache compression.
