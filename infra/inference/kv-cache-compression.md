@@ -38,7 +38,7 @@
 既然要衡量 KV cache 对注意力输出的重要性，就应该先从注意力输出公式开始看：
 
 $$
-o = A V W^{O}, \quad \text{where } A = \operatorname{softmax}\left(\frac{qK^{T}}{\sqrt{d}}\right)
+o = A V W^{O}, \quad \text{where } A = \mathrm{softmax}\left(\frac{qK^{T}}{\sqrt{d}}\right)
 $$
 
 从这个公式可以自然想到，KV cache 的影响可以分成三层：它先影响 $A$，再影响 $A V$，最后影响经过 $W^O$ 之后的 attention output。
