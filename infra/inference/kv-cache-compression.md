@@ -55,7 +55,7 @@ Attention Sink / StreamingLLM [2] -> H2O [3] -> Scissorhands [4] -> SnapKV [5] -
 
 我自己把这部分现象整理成了一张图，如图 1 所示。
 
-![图1 注意力分数视角下的 KV cache eviction 方法演进](assets/attention-eviction-evolution.png)
+![图1 注意力分数视角下的 KV cache eviction 方法演进](assets/kv-cache-compression/attention-eviction-evolution.png)
 
 **图1 注意力分数视角下的 KV cache eviction 方法演进。** 这张图主要整理了从 attention sink、context window、累计注意力，到 layer/head 自适应分配等方法之间的关系。这里的 eviction 特指通过重要性判断删除或保留部分 token 的 KV cache。
 
@@ -110,7 +110,7 @@ $$
 
 不过，我认为这个方法的主要问题在于额外计算量较多。在我的复现过程中，这些新的计算方式并没有换来对应的收益。我是以 benchmark 分数来衡量的，最后看到的 benchmark 分数和计算时间之间的 trade-off 并不让人满意。当时测到的数据如图 2 所示。
 
-![图2 OBCache 复现过程中的 benchmark 结果](assets/obcache-benchmark.png)
+![图2 OBCache 复现过程中的 benchmark 结果](assets/kv-cache-compression/obcache-benchmark.png)
 
 **图2 OBCache 复现过程中的 benchmark 结果。** 这组结果主要用于观察 output perturbation 类指标在实际 benchmark 上是否能抵消其额外计算开销。
 
@@ -153,7 +153,7 @@ $$
 
 不同 head 的 $q$ 之间夹角大致呈现如图 3 和图 4 所示的形状。
 
-| ![图3 不同 head 的 Q 向量夹角余弦分布之一](assets/q-head-cosine-1.png) | ![图4 不同 head 的 Q 向量夹角余弦分布之二](assets/q-head-cosine-2.png) |
+| ![图3 不同 head 的 Q 向量夹角余弦分布之一](assets/kv-cache-compression/q-head-cosine-1.png) | ![图4 不同 head 的 Q 向量夹角余弦分布之二](assets/kv-cache-compression/q-head-cosine-2.png) |
 | --- | --- |
 | **图3 不同 head 的 Q 向量夹角余弦分布之一。** | **图4 不同 head 的 Q 向量夹角余弦分布之二。** |
 
@@ -161,7 +161,7 @@ $$
 
 $K$ 之间的夹角大致呈现如图 5 和图 6 所示的形状。
 
-| ![图5 不同 head 的 K 向量夹角余弦分布之一](assets/k-head-cosine-1.png) | ![图6 不同 head 的 K 向量夹角余弦分布之二](assets/k-head-cosine-2.png) |
+| ![图5 不同 head 的 K 向量夹角余弦分布之一](assets/kv-cache-compression/k-head-cosine-1.png) | ![图6 不同 head 的 K 向量夹角余弦分布之二](assets/kv-cache-compression/k-head-cosine-2.png) |
 | --- | --- |
 | **图5 不同 head 的 K 向量夹角余弦分布之一。** | **图6 不同 head 的 K 向量夹角余弦分布之二。** |
 
@@ -169,7 +169,7 @@ $K$ 之间的夹角大致呈现如图 5 和图 6 所示的形状。
 
 $V$ 之间的夹角则呈现出另一种形状，如图 7 所示。把 $Q$、$K$、$V$ 放在一起看，可以发现它们虽然都来自同一个 attention block，但内部几何结构并不完全一致，这也是我觉得 KV cache 本身值得被单独研究的原因。
 
-![图7 不同 head 的 V 向量夹角余弦分布](assets/v-head-cosine.png)
+![图7 不同 head 的 V 向量夹角余弦分布](assets/kv-cache-compression/v-head-cosine.png)
 
 **图7 不同 head 的 V 向量夹角余弦分布。**
 
@@ -177,11 +177,11 @@ $V$ 之间的夹角则呈现出另一种形状，如图 7 所示。把 $Q$、$K$
 
 第三，从 $V$ 的 $L_2$ 范数角度看，随着 layer 增长，$V$ 的 $L_2$ 范数整体会变大，如图 8 和图 9 所示。
 
-![图8 V 向量 L2 范数随 layer 变化的实验结果之一](assets/v-l2-layer-1.png)
+![图8 V 向量 L2 范数随 layer 变化的实验结果之一](assets/kv-cache-compression/v-l2-layer-1.png)
 
 **图8 V 向量 $L_2$ 范数随 layer 变化的实验结果之一。**
 
-![图9 V 向量 L2 范数随 layer 变化的实验结果之二](assets/v-l2-layer-2.png)
+![图9 V 向量 L2 范数随 layer 变化的实验结果之二](assets/kv-cache-compression/v-l2-layer-2.png)
 
 **图9 V 向量 $L_2$ 范数随 layer 变化的实验结果之二。**
 
@@ -219,7 +219,7 @@ top-k 选择一定要轻量，否则会成为性能瓶颈。DSA 的 indexer 为�
 
 DSA 的整体结构如图 10 所示。
 
-![图10 DeepSeek Sparse Attention 中 lightning indexer 的整体结构](assets/dsa-lightning-indexer.png)
+![图10 DeepSeek Sparse Attention 中 lightning indexer 的整体结构](assets/kv-cache-compression/dsa-lightning-indexer.png)
 
 **图10 DeepSeek Sparse Attention 中 lightning indexer 的整体结构。** 该结构通过轻量 indexer 先选出候选 token，再执行稀疏 attention，从而降低长上下文场景下的 attention 访存和计算压力。
 
