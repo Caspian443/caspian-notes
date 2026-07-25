@@ -53,7 +53,7 @@
 整数量化通常会把共享同一组量化参数的数值范围划分为若干等间距区间，再将数值映射到对应的整数编码。非对称量化还可以使用 zero-point 表示实数 0 所对应的整数位置 [1,6]。量化过程一般可以写成：
 
 $$
-q=\operatorname{clip}\left(\operatorname{round}\left(\frac{x}{s}\right)+z,\ q_{\min},\ q_{\max}\right)
+q=\mathrm{clip}\left(\mathrm{round}\left(\frac{x}{s}\right)+z,\ q_{\min},\ q_{\max}\right)
 $$
 
 反量化则可以写成：
