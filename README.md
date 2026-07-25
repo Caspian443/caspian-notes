@@ -13,3 +13,5 @@ programming.
 
 - [KV Cache Compression](./infra/inference/kv-cache-compression.md) - Paper survey,
   experiment reproduction, and observations on KV cache compression.
+- [Model Quantization](./infra/inference/model-quantization.md) - Quantization
+  taxonomy, numerical formats, calibration, AWQ, GPTQ, and evaluation.
