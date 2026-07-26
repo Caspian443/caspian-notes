@@ -11,6 +11,8 @@ programming.
 
 ## Recent Notes
 
+- [KV Cache and the Underlying System](./infra/inference/kv-cache-and-bottom-system.md) -
+  Cache groups, lifecycle consistency, memory allocators, and KV cache offloading.
 - [KV Cache Compression](./infra/inference/kv-cache-compression.md) - Paper survey,
   experiment reproduction, and observations on KV cache compression.
 - [Model Quantization](./infra/inference/model-quantization.md) - Quantization
