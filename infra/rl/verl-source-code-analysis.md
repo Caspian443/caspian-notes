@@ -4,15 +4,15 @@
 
 ![verl 整体架构](./assets/verl-source-code-analysis/verl-architecture.png)
 
-Trainer 是全局训练流程的**单控制器**，负责组织整个训练流程。组织后文以 PPOTrainerSeparateAsync 为例。
+Trainer 是全局训练流程的 **单控制器**，负责组织整个训练流程。组织后文以 PPOTrainerSeparateAsync 为例。
 
-Model Engine 是 Actor、Critic、Reference 等模型的**训练计算后端**，负责模型初始化、分布式前后向、优化器更新和参数导出。
+Model Engine 是 Actor、Critic、Reference 等模型的 **训练计算后端**，负责模型初始化、分布式前后向、优化器更新和参数导出。
 
-Rollout 是 Actor 的推理执行端，使用当前策略权重生成 Response 或完整轨迹中的模型输出；后文以 **vllm后端**为例。
+Rollout 是 Actor 的推理执行端，使用当前策略权重生成 Response 或完整轨迹中的模型输出；后文以 **vLLM 后端**为例。
 
-TransferQueue 是生成侧与训练侧之间的**轨迹数据通道**，用于保存和传递 Prompt、Response、Reward、LogProb、Value、模型版本及处理状态。
+TransferQueue 是生成侧与训练侧之间的 **轨迹数据通道**，用于保存和传递 Prompt、Response、Reward、LogProb、Value、模型版本及处理状态。
 
-Checkpoint Engine 是训练侧到推理侧的在线权重同步抽象，负责把更新后的** Actor 权重发送给 Rollout**；它不同于用于故障恢复的持久化训练 Checkpoint，后文以 **Mooncake** 传输后端为例。
+Checkpoint Engine 是训练侧到推理侧的在线权重同步抽象，负责把更新后的 **Actor 权重发送给 Rollout**；它不同于用于故障恢复的持久化训练 Checkpoint，后文以 **Mooncake** 传输后端为例。
 
 
 
@@ -65,29 +65,29 @@ Trainer 组织流程
 
 初始化：
 
-1. **配置解析：**读取配置，根据配置确定训练需要的逻辑角色 role（actor，critic，ref，rollout）。
+1. **配置解析：** 读取配置，根据配置确定训练需要的逻辑角色 role（actor，critic，ref，rollout）。
 
-2. **控制器启动：**初始化 Ray 和 PPO Trainer，前者的作用是管理gpu资源和远程进程，后者的作用是作为训练的整个控制器控制流程。
+2. **控制器启动：** 初始化 Ray 和 PPO Trainer，前者的作用是管理 GPU 资源和远程进程，后者的作用是作为训练的整个控制器控制流程。
 
-3. **数据通道准备：**初始化 TransferQueue，再创建训练集、验证集和 DataLoader。TransferQueue 负责生成侧与训练侧之间的轨迹流转，DataLoader 则持续提供尚未生成 Response 的 Prompt。
+3. **数据通道准备：** 初始化 TransferQueue，再创建训练集、验证集和 DataLoader。TransferQueue 负责生成侧与训练侧之间的轨迹流转，DataLoader 则持续提供尚未生成 Response 的 Prompt。
 
-4. **资源映射：**建立资源池（ResourcePool），并把 Actor、Reference 和 Critic 等 Role 映射到资源池。资源池描述可供使用的节点和 GPU，Role 描述逻辑职责，二者结合后才确定某类 Worker 应当部署在哪里。
+4. **资源映射：** 建立资源池（ResourcePool），并把 Actor、Reference 和 Critic 等 Role 映射到资源池。资源池描述可供使用的节点和 GPU，Role 描述逻辑职责，二者结合后才确定某类 Worker 应当部署在哪里。
 
-5. **WorkerGroup 创建：**建立好资源池后创建 WorkerGroup，Worker 是真正执行模型初始化、前向传播、反向传播和参数更新的**远程进程**；WorkerGroup 则向 Trainer 提供统一的分布式调用入口，使 Trainer 可以像调用一个逻辑对象一样调用整组 Worker。
+5. **WorkerGroup 创建：** 建立好资源池后创建 WorkerGroup，Worker 是真正执行模型初始化、前向传播、反向传播和参数更新的 **远程进程**；WorkerGroup 则向 Trainer 提供统一的分布式调用入口，使 Trainer 可以像调用一个逻辑对象一样调用整组 Worker。
 
-6. **模型与 Hybrid Rollout 初始化：**在已创建的 Worker 进程中初始化 Critic、Actor 和 Reference 的 Model Engine；随后基础 **Trainer 在 Actor 资源池上创建 Hybrid vLLM**，作为可在生成模式与训练模式之间切换的 Rollout 能力。
+6. **模型与 Hybrid Rollout 初始化：** 在已创建的 Worker 进程中初始化 Critic、Actor 和 Reference 的 Model Engine；随后基础 **Trainer 在 Actor 资源池上创建 Hybrid vLLM**，作为可在生成模式与训练模式之间切换的 Rollout 能力。
 
-7. **Standalone Rollout 初始化：分离异步 Trainer（代码类 PPOTrainerSeparateAsync）**再**创建独立 Rollout 集群**：独立 vLLM 负责持续生成；每块 Rollout GPU 上的**权重接收 Worker（CheckpointEngineWorker）**负责接收新权重；**权重同步管理器（CheckpointEngineManager）**统一暂停生成、触发传输并恢复服务。初始化完成后**先同步一次**，使独立 vLLM 与当前 Actor 权重一致。
+7. **Standalone Rollout 初始化：分离异步 Trainer（代码类 PPOTrainerSeparateAsync）** 再 **创建独立 Rollout 集群**：独立 vLLM 负责持续生成；每块 Rollout GPU 上的 **权重接收 Worker（CheckpointEngineWorker）** 负责接收新权重；**权重同步管理器（CheckpointEngineManager）** 统一暂停生成、触发传输并恢复服务。初始化完成后 **先同步一次**，使独立 vLLM 与当前 Actor 权重一致。
 
 
 
 正式的训练过程：
 
-8. **生成与 PPO 更新：**Trainer 把 Prompt 提交给 AgentLoop；AgentLoop 通过 vLLM 生成轨迹，RewardLoop 计算奖励并写入 TransferQueue。Trainer 再由 ReplayBuffer 选取完整轨迹，依次计算旧策略概率、参考概率、Value、优势与 Return，并更新 Critic 和 Actor。
+8. **生成与 PPO 更新：** Trainer 把 Prompt 提交给 AgentLoop；AgentLoop 通过 vLLM 生成轨迹，RewardLoop 计算奖励并写入 TransferQueue。Trainer 再由 ReplayBuffer 选取完整轨迹，依次计算旧策略概率、参考概率、Value、优势与 Return，并更新 Critic 和 Actor。
 
-9. **异步陈旧度控制：**在 parameter\_sync\_step 次本地更新期间，独立 Rollout 仍使用上一次同步的 Actor 权重继续生成，因此新轨迹可能落后若干版本；ReplayBuffer 根据 global\_steps 和 max\_off\_policy\_threshold 控制可接受的陈旧度。
+9. **异步陈旧度控制：** 在 parameter\_sync\_step 次本地更新期间，独立 Rollout 仍使用上一次同步的 Actor 权重继续生成，因此新轨迹可能落后若干版本；ReplayBuffer 根据 global\_steps 和 max\_off\_policy\_threshold 控制可接受的陈旧度。
 
-10. **周期收尾与权重同步：**完成规定次数的本地 PPO 更新后，**Trainer 先按需保存训练 Checkpoint，再在 on\_step\_end 中通过 Checkpoint Engine 把新 Actor 权重同步到独立 Rollout**；之后执行验证、记录指标、清理本轮 TransferQueue 数据并递增全局步数，继续下一轮异步生成与训练。
+10. **周期收尾与权重同步：** 完成规定次数的本地 PPO 更新后，**Trainer 先按需保存训练 Checkpoint，再在 on\_step\_end 中通过 Checkpoint Engine 把新 Actor 权重同步到独立 Rollout**；之后执行验证、记录指标、清理本轮 TransferQueue 数据并递增全局步数，继续下一轮异步生成与训练。
 
 下面是整个过程对应的伪代码：
 
@@ -105,15 +105,15 @@ PPOTrainer._setup():
   init tokenizer / dataloader / resource pools / WorkerGroups
   init Critic and Actor/Reference Model Engine
   init RewardLoopManager
-**  create Hybrid LLMServerManager and CheckpointEngineManager**
+  create Hybrid LLMServerManager and CheckpointEngineManager
 
 # 独立 Rollout：verl/trainer/ppo/v1/trainer_separate_async.py:72-101
 PPOTrainerSeparateAsync._setup():
   super()._setup()
-**  create Standalone LLMServerManager**
-**  create Standalone CheckpointEngineManager**
+  create Standalone LLMServerManager
+  create Standalone CheckpointEngineManager
 on_init_end():
-**  sync Actor weights to Standalone and Hybrid Rollout**
+  sync Actor weights to Standalone and Hybrid Rollout
 
 # 训练循环：verl/trainer/ppo/v1/trainer_base.py:443-465,509-584
 while training:
@@ -123,7 +123,7 @@ while training:
     compute old_log_prob / ref_log_prob / values / advantage
     update_critic()
     update_actor()
-**  save checkpoint when needed; on_step_end()  # 同步新 Actor 权重**
+  save checkpoint when needed; on_step_end()  # 同步新 Actor 权重
   validate / log / clear TransferQueue; global_steps += 1
 ```
 
@@ -266,13 +266,13 @@ async for output in generator:
 
 - checkpoint的传输。
 
-主要关注第二点，即作为**checkpoint\_engine的transfer layer传递checkpoint。**
+主要关注第二点，即作为 **checkpoint\_engine 的 transfer layer 传递 checkpoint**。
 
 
 
 ### Mooncake 与接口边界
 
-**Mooncake** 是面向分布式 AI 工作负载的数据传输与存储系统，其中 Transfer Engine 负责在进程和节点之间搬运 DRAM、GPU 显存或 NVMe\-oF 中的数据，**核心抽象是 Segment、已注册的 Buffer 和读写传输请求。**本文中的 verl 集成只使用低层 。
+**Mooncake** 是面向分布式 AI 工作负载的数据传输与存储系统，其中 Transfer Engine 负责在进程和节点之间搬运 DRAM、GPU 显存或 NVMe\-oF 中的数据，**核心抽象是 Segment、已注册的 Buffer 和读写传输请求。** 本文中的 verl 集成只使用低层 。
 
 每个参与传输的进程各自创建一个 TransferEngine，并先注册本地内存。远端通过 `session_id + pointer + length` 描述可访问的 Buffer；数据面由 Mooncake 执行单边 Read/Write，控制面则负责交换地址、长度和张量元数据。
 
@@ -340,7 +340,7 @@ self.engine.transfer_sync_write(
 
 ### 工作流程
 
-1. **创建抽象：**Standalone Rollout 初始化时，每块 GPU 创建一个 Standalone Rollout Worker（CheckpointEngineWorker）；
+1. **创建抽象：** Standalone Rollout 初始化时，每块 GPU 创建一个 Standalone Rollout Worker（CheckpointEngineWorker）；
 
     当 backend=mooncake 时，该 Worker 内部实例化 Mooncake Checkpoint Engine 接收端。Actor 侧由 Standalone Weight\-Sync Manager（standalone\_checkpoint\_manager）创建对应发送端。
 
@@ -350,7 +350,7 @@ self.engine.transfer_sync_write(
     self.checkpoint_engine = CheckpointEngineRegistry.new(backend, bucket_size=...)
     ```
 
-2. **启动时机：**Standalone Weight\-Sync Manager 在加载训练 Checkpoint 后先同步一次；此后每个训练 Step 结束，再把最新 Actor 权重同步给 Standalone Rollout。
+2. **启动时机：** Standalone Weight\-Sync Manager 在加载训练 Checkpoint 后先同步一次；此后每个训练 Step 结束，再把最新 Actor 权重同步给 Standalone Rollout。
 
     ```Python
     # trainer_separate_async.py:98-101,126-130
@@ -358,7 +358,7 @@ self.engine.transfer_sync_write(
     on_step_end(): standalone_checkpoint_manager.update_weights(global_steps)
     ```
 
-3. **建立拓扑：**Standalone Weight\-Sync Manager 暂停生成并收集通信信息，然后建立 Actor Rank 0 → Standalone Rollout Worker Rank 1…N 的流水链；其他 Actor Rank 只参与分布式参数导出。
+3. **建立拓扑：** Standalone Weight\-Sync Manager 暂停生成并收集通信信息，然后建立 Actor Rank 0 → Standalone Rollout Worker Rank 1…N 的流水链；其他 Actor Rank 只参与分布式参数导出。
 
     ```Python
     # verl/checkpoint_engine/mooncake_checkpoint_engine.py:104-116
@@ -385,7 +385,7 @@ self.engine.transfer_sync_write(
         return actor_wg_kwargs, rollout_kwargs
     ```
 
-4. **双 Bucket 传输：**Mooncake 预分配两块 Bucket 并交替写入。当前 Bucket 被下一级 RDMA Read 时，发送端准备另一块；收到 Magic Signal 后，已读完的 Bucket 才能复用。
+4. **双 Bucket 传输：** Mooncake 预分配两块 Bucket 并交替写入。当前 Bucket 被下一级 RDMA Read 时，发送端准备另一块；收到 Magic Signal 后，已读完的 Bucket 才能复用。
 
     ```Python
     # 1. 初始化并注册两块数据 Bucket 与两格完成信号：mooncake_checkpoint_engine.py:83-91
@@ -476,7 +476,7 @@ self.engine.transfer_sync_write(
             break
     ```
 
-5. **加载进 vLLM：**Standalone Rollout Worker 将权重交给 ServerAdapter，ServerAdapter 再通过以下两种方式送入独立的 vLLM 进程：
+5. **加载进 vLLM：** Standalone Rollout Worker 将权重交给 ServerAdapter，ServerAdapter 再通过以下两种方式送入独立的 vLLM 进程：
 
     - CUDA IPC 直接共享 GPU 显存中的 Tensor，避免额外的 CPU→GPU 拷贝；
 
